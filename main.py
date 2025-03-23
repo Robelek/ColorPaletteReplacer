@@ -3,6 +3,7 @@ from tkinter import filedialog
 from PIL import Image
 import os
 import numpy as np
+import time
 
 ### OKLAB <-> RGB conversions
 # converted from: https://gist.github.com/earthbound19/e7fe15fdf8ca3ef814750a61bc75b5ce
@@ -25,7 +26,10 @@ def gammaToLinear(c):
 def cubeRoot(x):
     return x ** (1. / 3)
 def rgbToOklab(rgbData):
-    rgb = rgbData / 255.0
+    #this makes it use less memory and go around twice as fast
+    rgb = rgbData.astype(np.float32)
+    rgb = rgb / 255.0
+
 
     r = rgb[..., 0]
     g = rgb[..., 1]
@@ -121,7 +125,9 @@ def replacePalette():
         tk.messagebox.showerror(message="At least one of the inputs wasn't provided")
         return
 
-    originalData = np.array(inputImage)
+    startTime = time.time_ns()
+
+    originalData = np.array(inputImage).astype(np.float32)
 
     #we convert it to be 1dimensional
     reshaped = originalData.reshape(-1, 3)
@@ -146,7 +152,13 @@ def replacePalette():
 
     imageAfterChanges.save(newImagePath)
 
+    timeElapsed = time.time_ns() - startTime
+    seconds = timeElapsed / 1e9
+    print(f"Elapsed time: {seconds:.6f} seconds")
+
     tk.messagebox.showinfo(message=f"Successfully saved new image to: {newImagePath}")
+
+
 
 
 root = tk.Tk()
