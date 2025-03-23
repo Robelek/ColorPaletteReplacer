@@ -133,10 +133,13 @@ def replacePalette():
     reshaped = originalData.reshape(-1, 3)
     imageInOKLAB = rgbToOklab(reshaped)
 
-    #not very fun numpy thingy, that makes it repeat a value
-    differences = imageInOKLAB[:, np.newaxis, :] - paletteOKLAB[np.newaxis, :, :]
 
-    distances = np.sum(differences**2, axis=2)
+    #black magic numpy that makes it go very fast :)
+    A2 = np.sum(imageInOKLAB ** 2, axis=1)[:, np.newaxis]
+    B2 = np.sum(paletteOKLAB ** 2, axis=1)[np.newaxis, :]
+    AB = np.dot(imageInOKLAB, paletteOKLAB.T)
+    distances = A2 + B2 - 2 * AB
+
     closest = np.argmin(distances, axis=1)
     finalImageRGB = paletteRGB[closest]
 
