@@ -66,7 +66,7 @@ def oklabToRgb(oklabData):
 
     r = l * +4.0767416621 + m * -3.3077115913 + s * +0.2309699292
     g = l * -1.2684380046 + m * +2.6097574011 + s * -0.3413193965
-    b = l * -1.2684380046 + m * +2.6097574011 + s * -0.3413193965
+    b = l * -0.0041195378 + m * -0.7034439666 + s * +1.7072885337
 
     r = 255 * linearToGamma(r)
     g = 255 * linearToGamma(g)
@@ -92,7 +92,7 @@ def oklabDistance(colorData1, colorData2):
 def pickImage():
     currentlySelectedImagePath = filedialog.askopenfilename(filetypes=[("Image files", "*.png;*.jpg;*.jpeg;*.bmp;*.gif")], initialdir=".")
     if currentlySelectedImagePath:
-        currentImage = Image.open(currentlySelectedImagePath)
+        currentImage = Image.open(currentlySelectedImagePath).convert('RGB')
 
 
 
@@ -117,9 +117,11 @@ def setPaletteData():
 
     paletteData = []
 
-    for y in range(paletteData.shape[0]):
-        for x in range(paletteData.shape[1]):
-            r, g, b = paletteData[y, x]
+    inputPaletteData = np.array(inputPalette)
+
+    for y in range(inputPaletteData.shape[0]):
+        for x in range(inputPaletteData.shape[1]):
+            r, g, b = inputPaletteData[y, x]
             palettePixel = r, g, b
 
             oklabColor = rgbToOklab(palettePixel)
@@ -149,22 +151,16 @@ def getPaletteImage():
 def getClosestColorFromPalette(color):
     global inputPalette
     global inputPalettePath
+    global paletteData
 
-    paletteData = np.array(inputPalette)
 
-    closestColor = None
-    closestDist = None
 
-    for paletteColorData in paletteData:
-            colorOklab = rgbToOklab(color)
+    colorOklab = rgbToOklab(color)
+    dists = np.array([oklabDistance(colorOklab, paletteColorData['oklab']) for paletteColorData in paletteData])
+    bestIndex = np.argmin(dists)
 
-            dist = oklabDistance(paletteColorData['oklab'], colorOklab)
+    return paletteData[bestIndex]['rgb']
 
-            if closestDist is None or dist < closestDist:
-                closestColor = paletteColorData['rgb']
-                closestDist = dist
-
-    return closestColor
 def replacePalette():
     global inputImage
     global inputImagePath
@@ -176,14 +172,13 @@ def replacePalette():
 
     originalData = np.array(inputImage)
 
-    for y in range(originalData.shape[0]):
-        for x in range(originalData.shape[1]):
-            r,g,b = originalData[y, x]
-            originalPixel = r, g, b
+    #we convert it to be 1dimensional
 
-            originalData[y, x] = getClosestColorFromPalette(originalPixel)
+    reshaped = originalData.reshape(-1, 3)
+    bestColors = np.array([getClosestColorFromPalette(tuple(thisPixel)) for thisPixel in reshaped])
+    finalImageData = bestColors.reshape(originalData.shape)
 
-    imageAfterChanges = Image.fromarray(originalData)
+    imageAfterChanges = Image.fromarray(finalImageData)
     pathToOriginalImageDir = os.path.dirname(inputImagePath)
     originalImageName = os.path.splitext(os.path.basename(inputImagePath))[0]
 
@@ -216,7 +211,7 @@ paletteNameLabelText.set("Currently selected palette: none")
 paletteNameLabel = tk.Label(root, textvariable=paletteNameLabelText, pady=10)
 paletteNameLabel.pack()
 
-browseImagesButton = tk.Button(root, text="Replace palette", command=replacePalette, pady=5)
-browseImagesButton.pack(pady=10)
+replacePaletteButton = tk.Button(root, text="Replace palette", command=replacePalette, pady=5)
+replacePaletteButton.pack(pady=10)
 
 root.mainloop()
