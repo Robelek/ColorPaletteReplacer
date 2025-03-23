@@ -13,29 +13,27 @@ inputImagePath = None
 inputPalette = None
 inputPalettePath = None
 
+paletteRGB = None
+paletteOKLAB = None
+
 paletteData = []
 
 
 def gammaToLinear(c):
-    if c > 0.04045:
-        return pow((c + 0.055) / 1.055, 2.4)
-    else:
-        return c / 12.92
-
-def linearToGamma(c):
-    if c >= 0.0031308:
-        return 1.055 * pow(c, 1 / 2.4) - 0.055
-    else:
-        12.92 * c
+    return np.where(c > 0.04045, ((c + 0.055) / 1.055) ** 2.4, c / 12.92)
 
 def cubeRoot(x):
     return x ** (1. / 3)
 def rgbToOklab(rgbData):
-    r, g, b = rgbData
+    rgb = rgbData / 255.0
 
-    r = gammaToLinear(r/255.0)
-    g = gammaToLinear(g/255.0)
-    b = gammaToLinear(b/255.0)
+    r = rgb[..., 0]
+    g = rgb[..., 1]
+    b = rgb[..., 2]
+
+    r = gammaToLinear(r)
+    g = gammaToLinear(g)
+    b = gammaToLinear(b)
 
     l = 0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b
     m = 0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b
@@ -45,38 +43,13 @@ def rgbToOklab(rgbData):
     m = cubeRoot(m)
     s = cubeRoot(s)
 
-    resultOKLAB = (
+    resultOKLAB = np.stack([
         l * +0.2104542553 + m * +0.7936177850 + s * -0.0040720468,
         l * +1.9779984951 + m * -2.4285922050 + s * +0.4505937099,
-        l * +0.0259040371 + m * +0.7827717662 + s * -0.8086757660
+        l * +0.0259040371 + m * +0.7827717662 + s * -0.8086757660 ], axis=-1
     )
 
     return resultOKLAB
-
-def oklabToRgb(oklabData):
-    L, a, b = oklabData
-
-    l = L + a * +0.3963377774 + b * +0.2158037573
-    m = L + a * -0.1055613458 + b * -0.0638541728
-    s = L + a * -0.0894841775 + b * -1.2914855480
-
-    l = l**3
-    m = m**3
-    s = s**3
-
-    r = l * +4.0767416621 + m * -3.3077115913 + s * +0.2309699292
-    g = l * -1.2684380046 + m * +2.6097574011 + s * -0.3413193965
-    b = l * -0.0041195378 + m * -0.7034439666 + s * +1.7072885337
-
-    r = 255 * linearToGamma(r)
-    g = 255 * linearToGamma(g)
-    b = 255 * linearToGamma(b)
-
-    r = round(r)
-    g = round(g)
-    b = round(b)
-
-    return (r,g,b)
 
 
 def oklabDistance(colorData1, colorData2):
@@ -114,24 +87,13 @@ def getInputImage():
 def setPaletteData():
     global inputPalette
     global paletteData
+    global paletteRGB
+    global paletteOKLAB
 
     paletteData = []
 
-    inputPaletteData = np.array(inputPalette)
-
-    for y in range(inputPaletteData.shape[0]):
-        for x in range(inputPaletteData.shape[1]):
-            r, g, b = inputPaletteData[y, x]
-            palettePixel = r, g, b
-
-            oklabColor = rgbToOklab(palettePixel)
-
-            paletteData.append(
-                {
-                    "rgb": palettePixel,
-                    "oklab": oklabColor
-                }
-             )
+    paletteRGB = np.array(inputPalette).reshape(-1, 3)
+    paletteOKLAB = rgbToOklab(paletteRGB)
 
 def getPaletteImage():
     global inputPalette
@@ -148,23 +110,12 @@ def getPaletteImage():
 
 
 
-def getClosestColorFromPalette(color):
-    global inputPalette
-    global inputPalettePath
-    global paletteData
-
-
-
-    colorOklab = rgbToOklab(color)
-    dists = np.array([oklabDistance(colorOklab, paletteColorData['oklab']) for paletteColorData in paletteData])
-    bestIndex = np.argmin(dists)
-
-    return paletteData[bestIndex]['rgb']
 
 def replacePalette():
     global inputImage
     global inputImagePath
-
+    global paletteRGB
+    global paletteOKLAB
 
     if inputImage is None or inputPalette is None:
         tk.messagebox.showerror(message="At least one of the inputs wasn't provided")
@@ -173,11 +124,18 @@ def replacePalette():
     originalData = np.array(inputImage)
 
     #we convert it to be 1dimensional
-
     reshaped = originalData.reshape(-1, 3)
-    bestColors = np.array([getClosestColorFromPalette(tuple(thisPixel)) for thisPixel in reshaped])
-    finalImageData = bestColors.reshape(originalData.shape)
+    imageInOKLAB = rgbToOklab(reshaped)
 
+    #not very fun numpy thingy, that makes it repeat a value
+    differences = imageInOKLAB[:, np.newaxis, :] - paletteOKLAB[np.newaxis, :, :]
+
+    distances = np.sum(differences**2, axis=2)
+    closest = np.argmin(distances, axis=1)
+    finalImageRGB = paletteRGB[closest]
+
+
+    finalImageData = finalImageRGB.reshape(originalData.shape)
     imageAfterChanges = Image.fromarray(finalImageData)
     pathToOriginalImageDir = os.path.dirname(inputImagePath)
     originalImageName = os.path.splitext(os.path.basename(inputImagePath))[0]
